@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Exposed Polar Surface</title>
+<meta name="description" content="A scroll-driven 3D journey through measuring experimental polar surface area (EPSA) by supercritical fluid chromatography. Unofficial companion to Shimadzu Application News 01-01161-EN.">
+<meta name="theme-color" content="#05080b">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300;1,400&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a fixed WebGL world (supercritical CO2 → molecule → column → calibration → SST) under sticky, scroll-scrubbed chapters. Deliberately single dark theme: it's a dark instrument space. */
+:root{
+  --void:#05080b;
+  --ink:#e9eef2;
+  --dim:#8a9aa7;
+  --ice:#8fe6ff;      /* low polarity, CO2 */
+  --amber:#ffb24a;    /* exposed polarity */
+  --ember:#ff6a3d;    /* fail / high polarity */
+  --uv:#a98bff;       /* MS / 254 nm */
+  --hair:rgba(233,238,242,.14);
+  --display:"Cormorant Garamond","Cormorant",Georgia,"Times New Roman",serif;
+  --body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+html{background:var(--void)}
+body{background:var(--void);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:0;padding-block:0;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body.locked{overflow:hidden}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+.nogl #gl{display:none}
+.nogl{background:radial-gradient(ellipse at 60% 40%,#0f2530 0%,var(--void) 70%) fixed}
+
+/* atmosphere */
+.vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.55) 100%)}
+.grain{position:fixed;inset:-50%;pointer-events:none;z-index:2;opacity:.07;mix-blend-mode:overlay;animation:grain 1s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+
+/* HUD */
+.hud{position:fixed;z-index:20;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+.hud-tl{top:calc(env(safe-area-inset-top,0px) + 22px);left:max(16px,3vw);display:flex;gap:14px;align-items:baseline}
+.hud-tl b{color:var(--ink);font-weight:500;letter-spacing:.22em}
+.hud-tr{top:calc(env(safe-area-inset-top,0px) + 22px);right:max(16px,3vw);display:flex;gap:14px;align-items:center;pointer-events:auto}
+.hud-tr .idx{color:var(--ink)}
+.hud-bl{bottom:calc(env(safe-area-inset-bottom,0px) + 20px);left:max(16px,3vw);display:flex;gap:22px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.hud-bl span i{font-style:normal;color:var(--ink)}
+.hud-bl .phase i{color:var(--ice)}
+.hud-br{bottom:calc(env(safe-area-inset-bottom,0px) + 20px);right:max(16px,3vw)}
+.ctl{display:flex;gap:8px;align-items:center;pointer-events:auto}
+.ctl button{background:rgba(5,8,11,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(233,238,242,.28);color:var(--ink);font:inherit;letter-spacing:inherit;text-transform:inherit;padding:9px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;white-space:nowrap;transition:background .2s,color .2s,border-color .2s}
+.ctl button:hover{border-color:var(--ink)}
+.ctl button svg{width:12px;height:12px;fill:currentColor;flex:none}
+.ctl .demo{background:var(--ice);color:var(--void);border-color:var(--ice);font-weight:500;padding-inline:18px}
+.ctl .demo:hover{background:var(--ink);border-color:var(--ink)}
+.ctl .demo.on{background:transparent;color:var(--ice)}
+.ctl .demo.on .pp{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.demo-bar{position:fixed;left:0;top:0;height:2px;background:var(--ice);z-index:30;width:0;opacity:0;transition:opacity .3s;box-shadow:0 0 10px var(--ice)}
+.demo-bar.on{opacity:1}
+.rail{position:fixed;right:max(10px,1.4vw);top:50%;transform:translateY(-50%);height:28vh;width:1px;background:var(--hair);z-index:20}
+.rail i{position:absolute;left:0;top:0;width:1px;background:var(--ink);height:0}
+@media (max-width:720px){.rail{display:none}.hud-bl{gap:12px;font-size:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 66px)}.hud-br{left:16px;right:16px}.ctl{justify-content:space-between}.ctl .lbl{display:none}.hud-tl .sub{display:none}#chrom{bottom:calc(env(safe-area-inset-bottom,0px) + 116px)!important}.stick.scrim-m::before{content:"";position:absolute;inset:0;background:rgba(5,8,11,.55);pointer-events:none}}
+
+/* chapters */
+.ch{position:relative;z-index:5}
+.stick{position:sticky;top:0;height:100vh;height:100svh;display:grid;grid-template:1fr/1fr;padding-inline:max(20px,6vw);padding-block:max(86px,12vh) max(90px,12vh);pointer-events:none}
+.stick.scrim::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,8,11,.72) 0%,rgba(5,8,11,.35) 38%,transparent 60%);pointer-events:none;opacity:var(--scrim,1)}
+@media (max-width:720px){.stick.scrim::before{background:linear-gradient(180deg,rgba(5,8,11,.7) 0%,rgba(5,8,11,.15) 34%,rgba(5,8,11,.15) 46%,rgba(5,8,11,.8) 100%)}}
+.beat{grid-area:1/1;position:relative;max-width:34rem;min-width:0;align-self:center;justify-self:start;display:grid;gap:18px;transition:opacity .15s linear;pointer-events:auto}
+.beat.top,.beat.top-d{align-self:start}
+.beat.bottom{align-self:end}
+.beat.right{justify-self:end;text-align:left}
+@media (max-width:720px){.beat{align-self:end!important;justify-self:stretch!important;max-width:none}.beat.top{align-self:start!important}.probe-beat{display:none!important}}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);display:flex;gap:12px;align-items:center}
+.eyebrow::before{content:"";width:28px;height:1px;background:currentColor}
+h1,h2{font-family:var(--display);font-weight:300;margin:0;line-height:.92;letter-spacing:-.015em;text-wrap:balance}
+h1{font-size:clamp(4.2rem,15vw,13rem);font-style:italic}
+h2{font-size:clamp(2.8rem,6.6vw,6rem)}
+h2 em,h1 em{font-style:italic;color:var(--amber)}
+h2 .ice{color:var(--ice);font-style:italic}
+p{margin:0;max-width:44ch;color:#c5d0d8;font-size:1.02rem}
+p b{color:var(--ink);font-weight:500}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.small{font-size:.86rem;color:var(--dim)}
+
+/* intro */
+.intro-sub{font-family:var(--display);font-size:clamp(1.4rem,2.6vw,2.1rem);font-weight:300;line-height:1.2;max-width:28ch;color:var(--ink)}
+.cue{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:12px}
+.cue i{display:block;width:1px;height:46px;background:linear-gradient(var(--ink),transparent);animation:cue 2.2s ease-in-out infinite;transform-origin:top}
+@keyframes cue{0%{transform:scaleY(0)}50%{transform:scaleY(1)}100%{transform:scaleY(1);opacity:0}}
+
+/* phase diagram */
+.phase-card{display:grid;gap:8px;max-width:330px}
+.phase-card svg{width:100%;height:auto;overflow:visible}
+.phase-card text{font-family:var(--mono);font-size:8.5px;fill:var(--dim);letter-spacing:.04em}
+.phase-state{font-family:var(--display);font-style:italic;font-size:2.2rem;line-height:1;color:var(--ice)}
+
+/* counter */
+.counter{display:flex;align-items:baseline;gap:10px;font-family:var(--display);font-weight:300}
+.counter .n{font-size:clamp(5rem,13vw,10rem);line-height:.85;font-variant-numeric:tabular-nums;color:var(--amber)}
+.counter .u{font-family:var(--mono);font-size:13px;color:var(--dim);letter-spacing:.1em}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:0}
+.hold-hint{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink);display:inline-flex;gap:10px;align-items:center;border:1px solid var(--hair);border-radius:999px;padding:7px 14px;width:max-content}
+.hold-hint i{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber)}
+
+/* chromatogram */
+#chrom{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 52px);height:150px;width:100%;z-index:6;pointer-events:none;opacity:0}
+@media (max-width:720px){#chrom{height:110px}}
+
+/* probe */
+.probe{font-family:var(--mono);font-variant-numeric:tabular-nums;display:grid;gap:6px;border-top:1px solid var(--hair);padding-top:14px}
+.probe .big{font-family:var(--display);font-size:clamp(3rem,6vw,4.6rem);line-height:.9;font-weight:300;color:var(--ink)}
+.probe .big small{font-family:var(--mono);font-size:12px;color:var(--dim);margin-left:6px}
+.eq{font-family:var(--mono);font-size:12px;color:var(--dim);display:grid;gap:3px}
+.eq b{font-weight:400;color:var(--ice)}
+.eq b.v{color:var(--uv)}
+
+/* labels projected from 3D */
+#tags{position:fixed;inset:0;pointer-events:none;z-index:7;overflow:hidden}
+.tag{position:absolute;left:0;top:0;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink);white-space:nowrap;opacity:0;will-change:transform,opacity;text-shadow:0 0 8px rgba(5,8,11,.9)}
+.tag .k{display:inline-block;min-width:16px;color:var(--amber)}
+.tag.axis{color:var(--dim)}
+.tag.fail{color:var(--ember)}
+.tag.uv{color:var(--uv)}
+
+/* end calculator */
+.calc{display:grid;gap:16px;background:rgba(9,15,19,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hair);border-radius:14px;padding:24px;max-width:26rem}
+.calc label{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.calc .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.calc input[type=number]{background:transparent;border:0;border-bottom:1px solid var(--hair);color:var(--ink);font-family:var(--display);font-size:3rem;width:6.2ch;padding:0;font-weight:300}
+.calc input[type=number]:focus{outline:none;border-bottom-color:var(--ice)}
+.calc .min{font-family:var(--mono);color:var(--dim)}
+.seg{display:inline-flex;border:1px solid var(--hair);border-radius:999px;padding:3px}
+.seg button{background:none;border:0;color:var(--dim);font-family:var(--mono);font-size:11px;letter-spacing:.1em;padding:6px 12px;border-radius:999px;cursor:pointer;text-transform:uppercase}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--void)}
+.out{font-family:var(--display);font-weight:300;font-size:clamp(3.4rem,7vw,5rem);line-height:.9}
+.out small{font-family:var(--mono);font-size:13px;color:var(--dim)}
+.verdict{font-size:.92rem;color:#c5d0d8}
+.scale{position:relative;height:30px}
+.scale .tr{position:absolute;left:0;right:0;top:12px;height:2px;background:linear-gradient(90deg,var(--ice),var(--amber) 55%,var(--ember))}
+.scale .nd{position:absolute;top:4px;width:2px;height:18px;background:var(--ink);transition:left .3s}
+.scale span{position:absolute;top:20px;font-family:var(--mono);font-size:9px;color:var(--dim);transform:translateX(-50%)}
+.refs{font-size:.78rem;color:var(--dim);display:grid;gap:4px;max-width:34rem}
+.refs a{color:var(--ink)}
+:focus-visible{outline:1px solid var(--ice);outline-offset:3px}
+
+/* loader + entry */
+#gate{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(5,8,11,.74);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:opacity .9s ease,visibility .9s;padding-inline:20px}
+#gate.gone{opacity:0;visibility:hidden}
+.gate-in{display:grid;gap:22px;justify-items:center;text-align:center}
+.gate-p{font-family:var(--display);font-weight:300;font-size:clamp(4rem,12vw,8rem);line-height:.9;font-variant-numeric:tabular-nums}
+.gate-p small{font-family:var(--mono);font-size:13px;color:var(--dim);letter-spacing:.1em;margin-left:8px}
+.gate-l{font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.gate-bar{width:min(320px,70vw);height:1px;background:var(--hair);position:relative;overflow:hidden}
+.gate-bar i{position:absolute;inset:0;background:var(--ice);transform-origin:left;transform:scaleX(0)}
+.gate-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;opacity:0;transition:opacity .6s}
+.gate-btns.show{opacity:1}
+.gate-btns button{background:none;border:1px solid var(--ink);color:var(--ink);font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding:14px 22px;border-radius:999px;cursor:pointer}
+.gate-btns button.alt{border-color:var(--hair);color:var(--dim)}
+.gate-btns button:hover{background:var(--ink);color:var(--void)}
+
+/* cursor */
+#cur{position:fixed;left:0;top:0;width:34px;height:34px;margin:-17px 0 0 -17px;border:1px solid rgba(233,238,242,.6);border-radius:50%;pointer-events:none;z-index:60;transition:width .25s,height .25s,margin .25s,border-color .25s,background .25s}
+#cur span{position:absolute;left:44px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;color:var(--ink);opacity:0;transition:opacity .2s}
+#cur.lbl span{opacity:1}
+#cur.hold{width:64px;height:64px;margin:-32px 0 0 -32px;border-color:var(--amber);background:rgba(255,178,74,.08)}
+@media (pointer:coarse){#cur{display:none}}
+@media (prefers-reduced-motion:reduce){.grain,.cue i,.ctl .demo.on .pp{animation:none}}
+</style>
+</head>
+<body>
+
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<div class="grain" id="grain"></div>
+<canvas id="chrom" aria-hidden="true"></canvas>
+<div id="tags" aria-hidden="true"></div>
+<div id="cur"><span id="curLbl">Hold · TPSA view</span></div>
+
+<div class="hud hud-tl"><b>Exposed</b><span class="sub">EPSA · Supercritical fluid chromatography</span></div>
+<div class="hud hud-tr"><span><span class="idx" id="hIdx">01</span> / 08</span><span id="hName">Exposed</span></div>
+<div class="hud hud-bl" aria-live="off">
+  <span>P <i id="rP">0.1</i> MPa</span>
+  <span>T <i id="rT">20.0</i> °C</span>
+  <span class="phase">Phase <i id="rPh">gas</i></span>
+  <span id="rTwrap" hidden>t<sub>R</sub> <i id="rTr">0.000</i> min</span>
+</div>
+<div class="hud hud-br ctl">
+  <button id="bTop" title="Jump to the start"><svg viewBox="0 0 12 12"><path d="M6 1 1 7h3.2v4h3.6V7H11z"/></svg><span class="lbl">Top</span></button>
+  <button id="bDemo" class="demo" title="Play or pause the guided demo (D)" aria-pressed="false"><svg class="pp" viewBox="0 0 12 12" id="bDemoIco"><path d="M2 1v10l9-5z"/></svg><span id="bDemoL">Play demo</span></button>
+  <button id="bEnd" title="Jump to the end"><svg viewBox="0 0 12 12"><path d="M6 11 1 5h3.2V1h3.6v4H11z"/></svg><span class="lbl">End</span></button>
+</div>
+<div class="demo-bar" id="demoBar"></div>
+<div class="rail"><i id="railI"></i></div>
+
+<main>
+<section class="ch" id="c0" style="height:170vh" data-name="Exposed">
+  <div class="stick scrim">
+    <div class="beat" data-a="-1" data-b=".8">
+      <span class="eyebrow">Shimadzu Application News 01-01161-EN</span>
+      <h1>Exposed</h1>
+      <p class="intro-sub">How much of a molecule's polarity can a cell membrane actually see?</p>
+      <p>A journey through supercritical CO₂ to measure it. The method is experimental polar surface area, or EPSA, read from a retention time on the Nexera UC.</p>
+      <span class="cue"><i></i>Scroll to pressurize</span>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c1" style="height:280vh" data-name="Pressure">
+  <div class="stick scrim">
+    <div class="beat" data-a=".02" data-b=".96">
+      <span class="eyebrow">01 · The mobile phase</span>
+      <h2>First, make<br>the <span class="ice">solvent</span>.</h2>
+      <p>Squeezed at room temperature, CO₂ condenses to a liquid near <b>5.7 MPa</b>, and the pump delivers it at <b>20.4 MPa</b>, the pressure the back-pressure regulator holds. In the 40 °C column oven it passes <b>31.1 °C</b> with the pressure already above <b>7.38 MPa</b>, and the boundary between liquid and gas disappears. The fluid is now supercritical: dense like a liquid, quick like a gas. Methanol with 20 mM ammonium formate is mixed in as the modifier.</p>
+      <div class="phase-card">
+        <span class="phase-state" id="phState">gas</span>
+        <svg viewBox="0 0 260 176" role="img" aria-label="CO2 phase diagram with the current pressure and temperature">
+          <rect x="114.8" y="10" width="135.2" height="97" fill="rgba(143,230,255,.08)"/>
+          <line x1="34" y1="156" x2="250" y2="156" stroke="rgba(233,238,242,.25)"/>
+          <line x1="34" y1="10" x2="34" y2="156" stroke="rgba(233,238,242,.25)"/>
+          <polyline id="vapCurve" fill="none" stroke="#e9eef2" stroke-width="1.2" points=""/>
+          <line x1="114.8" y1="10" x2="114.8" y2="107" stroke="rgba(143,230,255,.35)" stroke-dasharray="2 3"/>
+          <line x1="114.8" y1="107" x2="250" y2="107" stroke="rgba(143,230,255,.35)" stroke-dasharray="2 3"/>
+          <polyline id="phPath" fill="none" stroke="#ffb24a" stroke-width="1" stroke-dasharray="3 3" points=""/>
+          <circle cx="114.8" cy="107" r="2.6" fill="#e9eef2"/>
+          <text x="120" y="118">critical point</text>
+          <text x="40" y="40">liquid</text>
+          <text x="190" y="140">gas</text>
+          <text x="150" y="30" style="fill:#8fe6ff">supercritical</text>
+          <text x="34" y="170">10</text><text x="142" y="170">30</text><text x="250" y="170" text-anchor="end">50 °C</text>
+          <text x="28" y="159" text-anchor="end">0</text><text x="28" y="92" text-anchor="end">10</text><text x="28" y="26" text-anchor="end">20</text>
+          <text x="6" y="10">MPa</text>
+          <circle id="phDot" r="4.5" fill="#ffb24a" cx="74" cy="156"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c2" style="height:190vh" data-name="On paper">
+  <div class="stick scrim">
+    <div class="beat" data-a=".04" data-b=".93">
+      <span class="eyebrow">02 · Topological PSA</span>
+      <h2>On paper,<br><em>278 Å²</em>.</h2>
+      <p>This is cyclosporin A, a cyclic peptide of eleven residues. Topological polar surface area (TPSA) adds up the contribution of every nitrogen and oxygen, each lit here in amber.</p>
+      <p>By that count it sits far past <b>140 Å²</b>, the line beyond which oral drugs tend to stop crossing membranes. Yet patients absorb it from a capsule.</p>
+      <div class="legend"><span><i class="dot" style="background:var(--amber);box-shadow:0 0 8px var(--amber)"></i>N, O</span><span><i class="dot" style="background:#9fb3c6"></i>Backbone C</span><span><i class="dot" style="background:#3b4f63"></i>Side chains</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c3" style="height:300vh" data-name="The fold">
+  <div class="stick scrim">
+    <div class="beat" data-a=".03" data-b=".95">
+      <span class="eyebrow">03 · Experimental PSA</span>
+      <h2>In solution,<br>it <span class="ice">hides</span>.</h2>
+      <div class="counter"><span class="n" id="foldN">278</span><span class="u">Å² polar surface<br><span id="foldLbl">counted</span></span></div>
+      <p>The ring folds. Four internal hydrogen bonds pair N–H with C=O, and the lipophilic side chains close over the polar core. What faces outward is mostly hydrocarbon. EPSA measures only that surface: <b>62 Å²</b>.</p>
+      <span class="hold-hint"><i></i>Press and hold to see what TPSA counts</span>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c4" style="height:440vh" data-name="The column">
+  <div class="stick scrim">
+    <div class="beat top" data-a=".02" data-b=".56">
+      <span class="eyebrow">04 · Chirex (S)-Val / (R)-NEA · 40 °C</span>
+      <h2>Polarity<br>becomes <em>time</em>.</h2>
+      <p>Nine reference compounds ride the CO₂ through the column, with ritonavir and cyclosporin A alongside. They run from lidocaine (<b>47 Å²</b>) to furosemide (<b>230 Å²</b>). The more polar surface a molecule shows, the longer the stationary phase holds it.</p>
+    </div>
+    <div class="beat top" data-a=".58" data-b=".98">
+      <span class="eyebrow">Two detectors</span>
+      <h2>Two ways<br>to <span class="ice">see</span>.</h2>
+      <p>The PDA reads absorbance at 254 nm. The LCMS-2050 reads ions. Cyclosporin A barely absorbs UV, so the PDA misses it, but the mass spectrometer finds it at <b>m/z 1201 [M−H]⁻</b>. Either retention time gives EPSA.</p>
+      <div class="legend"><span><i class="dot" style="background:var(--ice)"></i>PDA trace</span><span><i class="dot" style="background:var(--uv)"></i>MS trace</span><span>Schematic peaks</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c5" style="height:290vh" data-name="The line">
+  <div class="stick">
+    <div class="beat top-d" data-a=".03" data-b=".95">
+      <span class="eyebrow">05 · Calibration</span>
+      <h2>Time becomes<br><span class="ice">area</span>.</h2>
+      <div class="eq"><span><b>PDA</b> EPSA = 53.991 t<sub>R</sub> + 25.177 · R² 0.9977</span><span><b class="v">MS</b> EPSA = 54.167 t<sub>R</sub> + 23.365 · R² 0.9976</span></div>
+    </div>
+    <div class="beat bottom right probe-beat" data-a=".35" data-b=".95">
+      <div class="probe">
+        <span class="small">Move across the screen to read the line</span>
+        <span class="big"><span id="pE">75.5</span><small>Å²</small></span>
+        <span class="small">t<sub>R</sub> <span id="pT">0.932</span> min on the PDA line</span>
+        <span class="small">Ritonavir: TPSA 145 → EPSA 75 · Cyclosporin A: 278 → 62</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c6" style="height:260vh" data-name="Every morning">
+  <div class="stick scrim">
+    <div class="beat" data-a=".03" data-b=".95">
+      <span class="eyebrow">06 · System suitability</span>
+      <h2>Every morning,<br><em>prove it</em>.</h2>
+      <p>EPSA comes straight from retention time, so any drift in the system becomes an error in Å². Open Solution runs diclofenac at startup. It passes only if it elutes between <b>2.100 and 2.200 min</b>.</p>
+      <p>On 2 February the modifier salt was halved from 20 to 10 mmol/L. Diclofenac came out at <b>2.237 min</b> and the run failed. On the calibration line, a 0.11 min shift is worth about <b>6 Å²</b>, so results from that day could not be trusted.</p>
+      <p class="small">Between users the instrument conditions itself, idles at low flow, and shuts down when left alone.</p>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="c7" style="height:180vh" data-name="Your sample">
+  <div class="stick scrim-m">
+    <div class="beat right" data-a=".05" data-b="2">
+      <form class="calc" id="calc" autocomplete="off">
+        <span class="eyebrow">07 · Your sample</span>
+        <label for="cRt">Retention time</label>
+        <div class="row"><input type="number" id="cRt" step="0.001" min="0" max="6" value="0.932"><span class="min">min</span></div>
+        <div class="seg" role="group" aria-label="Calibration curve"><button type="button" id="cPDA" aria-pressed="true">PDA</button><button type="button" id="cMS" aria-pressed="false">MS</button></div>
+        <div class="out"><span id="cOut">75.5</span> <small>Å² EPSA</small></div>
+        <div class="scale" aria-hidden="true"><div class="tr"></div><div class="nd" id="cNd"></div><span style="left:23.3%">70</span><span style="left:33.3%">100</span><span style="left:46.7%">140</span><span style="left:76.7%">230</span></div>
+        <p class="verdict" id="cVer"></p>
+      </form>
+      <div class="refs">
+        <span>Hirota, Ogami, Masuda. Measurement of Experimental Polar Surface Area Using Supercritical Fluid Chromatography. Shimadzu Application News 01-01161-EN, April 2026. Prepared with Kissei Pharmaceutical.</span>
+        <span>Standards' EPSA values: Wang et al., J. Med. Chem. 2024. EPSA method: Goetz et al., ACS Med. Chem. Lett. 2014. 140 Å² rule: Veber et al., J. Med. Chem. 2002.</span>
+        <span>Molecule geometry and chromatogram peaks are illustrative. Retention times are placed on the published calibration lines. Not affiliated with Shimadzu.</span>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<div id="gate">
+  <div class="gate-in">
+    <span class="gate-l" id="gateL">Pressurizing column</span>
+    <div class="gate-p"><span id="gateP">0.0</span><small>MPa</small></div>
+    <div class="gate-bar"><i id="gateBar"></i></div>
+    <div class="gate-btns" id="gateBtns">
+      <button id="enterD">Play the demo</button>
+      <button id="enterQ" class="alt">Explore on my own</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+(()=>{
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const sstep=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t)};
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarse=matchMedia('(pointer:coarse)').matches;
+const narrow=()=>innerWidth<=720;
+
+/* ---------- data (from the application note) ---------- */
+const FIT={PDA:{m:53.991,b:25.177},MS:{m:54.167,b:23.365}};
+const rtOf=(e,d='PDA')=>(e-FIT[d].b)/FIT[d].m;
+const epsaOf=(t,d='PDA')=>FIT[d].m*t+FIT[d].b;
+const STD=[ // key, name, EPSA, PDA height, MS height (schematic, after Figs 3–4)
+ ['A','Lidocaine',47,.18,1],['B','Antipyrine',61,.45,.8],['C','Chlorpromazine',68,.95,.7],
+ ['D','Desipramine',87,.35,.65],['E','Pindolol',103,.28,.55],['F','Diclofenac',135,.25,.55],
+ ['G','m-Nitrobenzoic acid',157,.2,.45],['H','Bumetanide',185,.12,.45],['I','Furosemide',230,.07,.25]];
+const COMETS=STD.map(([k,n,e,hp,hm])=>({k,n,e,rt:rtOf(e),rtMS:rtOf(e,'MS'),hp,hm,pda:true}));
+COMETS.push({k:'R',n:'Ritonavir',e:75,rt:.932,rtMS:.966,hp:.5,hm:.6,pda:true,pep:true});
+COMETS.push({k:'CsA',n:'Cyclosporin A',e:62,rt:rtOf(62,'MS'),rtMS:rtOf(62,'MS'),hp:0,hm:.75,pda:false,pep:true});
+const SST=[['01/27',2.118],['01/28',2.125],['01/29',2.134],['01/30',2.125],['02/02',2.237],['02/03',2.117]];
+
+/* ---------- grain texture ---------- */
+(()=>{const c=document.createElement('canvas');c.width=c.height=160;const x=c.getContext('2d');const d=x.createImageData(160,160);
+ for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255}
+ x.putImageData(d,0,0);$('grain').style.backgroundImage=`url(${c.toDataURL()})`;})();
+
+/* ---------- phase diagram ---------- */
+const VAP=[[10,4.5],[15,5.09],[20,5.73],[25,6.43],[30,7.21],[31.1,7.38]];
+const pxT=T=>34+(T-10)/40*216, pyP=P=>156-P/22*146;
+$('vapCurve').setAttribute('points',VAP.map(([T,P])=>pxT(T)+','+pyP(P)).join(' '));
+const vapAt=T=>{if(T>=31.1)return 7.38;for(let i=1;i<VAP.length;i++)if(T<=VAP[i][0]){const[a,p]=VAP[i-1],[b,q]=VAP[i];return lerp(p,q,(T-a)/(b-a))}return 4.5};
+const phaseOf=(P,T)=>(T>=31.1&&P>=7.38)?'supercritical':(P>=vapAt(T)?'liquid':'gas');
+const pressAt=e=>e<.55?[0.1+20.3*(e/.55),20]:[20.4,20+20*((e-.55)/.45)]; // isothermal compression at 20 °C, then heating at 20.4 MPa
+
+/* ---------- sections ---------- */
+const secs=[...document.querySelectorAll('.ch')];
+const N=secs.length;
+let tops=[],hs=[],vh=innerHeight,W=innerWidth,H=innerHeight;
+function measure(){vh=innerHeight;W=innerWidth;H=innerHeight;tops=secs.map(s=>s.offsetTop);hs=secs.map(s=>s.offsetHeight)}
+function stateAt(y){let i=0;for(let j=0;j<N;j++)if(y>=tops[j]-1)i=j;return{i,lp:clamp((y-tops[i])/Math.max(1,hs[i]-vh))}}
+const beats=secs.map(s=>[...s.querySelectorAll('.beat')].map(b=>({el:b,a:+b.dataset.a,b:+b.dataset.b})));
+
+/* ---------- calculator ---------- */
+let cDet='PDA';
+function verdict(e){
+ if(e<47)return'Below the calibrated range (lidocaine, 47 Å²). Treat it as an extrapolation.';
+ if(e>230)return'Above the calibrated range (furosemide, 230 Å²). Treat it as an extrapolation.';
+ if(e<=70)return'At or below about 60–70 Å², the range usually needed to cross the blood–brain barrier.';
+ if(e<=100)return'Under 100 Å². Peptides in this range can still show passive permeability.';
+ if(e<=140)return'Over 100 Å². Peptides here generally show little passive permeability.';
+ return'Over 140 Å². Poor membrane permeability and oral bioavailability are expected.';}
+function calc(){const t=parseFloat($('cRt').value);if(!isFinite(t)){$('cVer').textContent='Enter a retention time in minutes, for example 0.932.';return}
+ const e=epsaOf(t,cDet);$('cOut').textContent=e.toFixed(1);$('cVer').textContent=verdict(e);
+ $('cNd').style.left=clamp(e/300*100,0,100)+'%';
+ $('cPDA').setAttribute('aria-pressed',cDet==='PDA');$('cMS').setAttribute('aria-pressed',cDet==='MS');}
+$('cRt').addEventListener('input',calc);
+$('cPDA').onclick=()=>{cDet='PDA';calc()};$('cMS').onclick=()=>{cDet='MS';calc()};
+$('calc').addEventListener('submit',e=>e.preventDefault());
+calc();
+
+
+
+/* ---------- gate (loader + entry) ---------- */
+document.body.classList.add('locked');
+const gateStart=performance.now();
+let gateDone=false;
+function gateTick(now){
+ const k=reduce?1:clamp((now-gateStart)/1700);const e=ease(k);
+ $('gateP').textContent=(20.4*e).toFixed(1);$('gateBar').style.transform=`scaleX(${e})`;
+ if(k>=1){$('gateL').textContent='Supercritical · 40.0 °C · 20.4 MPa';$('gateBtns').classList.add('show');return}
+ requestAnimationFrame(gateTick);}
+requestAnimationFrame(gateTick);
+function enter(demo){if(gateDone)return;gateDone=true;$('gate').classList.add('gone');document.body.classList.remove('locked');measure();if(demo)setTimeout(()=>startDemo(),500)}
+$('enterD').onclick=()=>enter(true);$('enterQ').onclick=()=>enter(false);
+setTimeout(()=>{$('gateBtns').classList.add('show')},2600);
+
+
+/* ---------- guided demo + jump controls ---------- */
+const DUR=[7,17,12,19,28,17,15,9]; // seconds per chapter, paced to what each chapter shows
+let demo=false,demoT=0;
+const demoTotal=()=>DUR.reduce((a,b)=>a+b,0);
+const maxY=()=>document.documentElement.scrollHeight-innerHeight;
+const sEnd=i=>i<N-1?tops[i+1]:maxY();
+function yAtDemo(t){let acc=0;for(let i=0;i<N;i++){if(t<=acc+DUR[i]||i===N-1){const f=clamp((t-acc)/DUR[i]);return lerp(tops[i],sEnd(i),f)}acc+=DUR[i]}return maxY()}
+function demoAtY(y){let acc=0;for(let i=0;i<N;i++){if(y<sEnd(i)||i===N-1)return acc+clamp((y-tops[i])/Math.max(1,sEnd(i)-tops[i]))*DUR[i];acc+=DUR[i]}return demoTotal()}
+function setDemoUI(){$('bDemo').classList.toggle('on',demo);$('bDemo').setAttribute('aria-pressed',demo);$('demoBar').classList.toggle('on',demo);
+ $('bDemoL').textContent=demo?'Pause demo':(demoT>0&&demoT<demoTotal()-.5?'Resume demo':'Play demo');
+ $('bDemoIco').innerHTML=demo?'<path d="M2 1h3v10H2zM7 1h3v10H7z"/>':'<path d="M2 1v10l9-5z"/>'}
+function startDemo(){measure();if(scrollY>=maxY()-4){scrollTo(0,0);sy=0;demoT=0}else demoT=demoAtY(scrollY);demo=true;setDemoUI()}
+function pauseDemo(){if(!demo)return;demo=false;setDemoUI()}
+function tickDemo(dt){if(!demo)return;demoT+=dt;const y=yAtDemo(demoT);scrollTo(0,y);
+ $('demoBar').style.width=(clamp(demoT/demoTotal())*100)+'%';if(demoT>=demoTotal()){demo=false;demoT=0;setDemoUI()}}
+$('bDemo').onclick=()=>demo?pauseDemo():startDemo();
+$('bTop').onclick=()=>{pauseDemo();demoT=0;scrollTo({top:0,behavior:reduce?'auto':'smooth'})};
+$('bEnd').onclick=()=>{pauseDemo();scrollTo({top:maxY(),behavior:reduce?'auto':'smooth'})};
+['wheel','touchstart'].forEach(ev=>addEventListener(ev,()=>pauseDemo(),{passive:true}));
+addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('input'))return;
+ if(e.key==='d'||e.key==='D'){demo?pauseDemo():(gateDone?startDemo():enter(true));return}
+ if(['ArrowDown','ArrowUp','PageDown','PageUp',' ','Home','End'].includes(e.key))pauseDemo()});
+
+/* ---------- pointer / cursor ---------- */
+let mx=W/2,my=H/2,cx=mx,cy=my,ptrMoved=false,holding=false,hold=0,dragYaw=0,dragV=0,lastX=null;
+addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY;ptrMoved=true;
+ if(e.buttons&&lastX!==null&&!e.target.closest('button,input,a,form')){dragV+=(e.clientX-lastX)*.004}lastX=e.clientX});
+let holdTimer=null,downX=0,downY=0;
+addEventListener('pointerdown',e=>{if(e.target.closest('button,input,a,form,.calc'))return;lastX=e.clientX;downX=e.clientX;downY=e.clientY;
+ if(e.pointerType==='touch'){clearTimeout(holdTimer);holdTimer=setTimeout(()=>{holding=true},380)}else{holding=true;$('cur').classList.add('hold')}});
+addEventListener('pointermove',e=>{if(holdTimer&&Math.hypot(e.clientX-downX,e.clientY-downY)>10){clearTimeout(holdTimer);holdTimer=null}});
+const up=()=>{clearTimeout(holdTimer);holdTimer=null;holding=false;lastX=null;$('cur').classList.remove('hold')};
+addEventListener('pointerup',up);addEventListener('pointercancel',up);addEventListener('blur',up);
+
+/* ---------- chromatogram canvas ---------- */
+const chrom=$('chrom'),cctx=chrom.getContext('2d');
+function sizeChrom(){const d=Math.min(devicePixelRatio||1,2);chrom.width=chrom.clientWidth*d;chrom.height=chrom.clientHeight*d;chrom._d=d}
+sizeChrom();
+function drawChrom(t,vis){
+ chrom.style.opacity=vis.toFixed(3);if(vis<.01)return;
+ const d=chrom._d,w=chrom.width,h=chrom.height,ctx=cctx;ctx.clearRect(0,0,w,h);
+ const pl=Math.max(20,W*.06)*d,pr=Math.max(20,W*.06)*d,X=m=>pl+m/4.2*(w-pl-pr);
+ const bP=h-18*d,bM=h*.47,amp=h*.33;
+ ctx.font=`${10*d}px "IBM Plex Mono", monospace`;ctx.textBaseline='alphabetic';
+ ctx.strokeStyle='rgba(233,238,242,.16)';ctx.lineWidth=d;ctx.beginPath();ctx.moveTo(pl,bP+.5);ctx.lineTo(w-pr,bP+.5);ctx.stroke();
+ ctx.fillStyle='rgba(138,154,167,.9)';
+ for(let m=0;m<=4;m++){ctx.fillText(m+(m===4?' min':''),X(m)-3*d,h-3*d)}
+ ctx.textAlign='right';ctx.fillText('PDA · 254 nm',w-pr,bP-6*d);
+ ctx.fillStyle='rgba(169,139,255,.9)';ctx.fillText('MS · XIC overlay',w-pr,bM-6*d);ctx.textAlign='left';
+ const sig=m=>.022+.009*m;
+ const trace=(base,key,rtKey,col)=>{ctx.strokeStyle=col;ctx.lineWidth=1.4*d;ctx.beginPath();
+  const x1=X(Math.min(t,4.2));for(let x=pl;x<=x1;x+=1.5*d){const m=(x-pl)/(w-pl-pr)*4.2;let v=0;
+   for(const c of COMETS){const hh=c[key];if(!hh)continue;const s=sig(c[rtKey]);v+=hh*Math.exp(-.5*((m-c[rtKey])/s)**2)}
+   v+=.012*Math.sin(m*61)+.008*Math.sin(m*137);const y=base-v*amp;x===pl?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke()};
+ trace(bP,'hp','rt','rgba(143,230,255,.95)');trace(bM,'hm','rtMS','rgba(169,139,255,.95)');
+ ctx.textAlign='center';
+ for(const c of COMETS){if(c.pda&&t>c.rt+.04){ctx.fillStyle=c.pep?'#e9eef2':'#ffb24a';ctx.fillText(c.k,X(c.rt),bP-c.hp*amp-6*d)}
+  if(!c.pda&&t>c.rtMS+.04){ctx.fillStyle='#e9eef2';ctx.fillText(c.k,X(c.rtMS),bM-c.hm*amp-6*d)}}
+ ctx.textAlign='left';
+ if(t<4.2){ctx.strokeStyle='rgba(233,238,242,.5)';ctx.lineWidth=d;ctx.beginPath();ctx.moveTo(X(t),bM-amp-4*d);ctx.lineTo(X(t),bP);ctx.stroke()}
+}
+
+/* ---------- labels projected from 3D ---------- */
+const tags=[];
+function tag(html,cls,pos,show){const el=document.createElement('div');el.className='tag '+(cls||'');el.innerHTML=html;$('tags').appendChild(el);const t={el,pos,show,o:0};tags.push(t);return t}
+
+/* ---------- 3D ---------- */
+let GL=false,renderer,scene,camera,composer,bloom;
+try{renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true,powerPreference:'high-performance'});GL=!!renderer.getContext()}catch(e){GL=false}
+if(!GL)document.body.classList.add('nogl');
+
+const BG=0x05080b, ZE=-305, Z0=-40, L=100, ZPDA=-140, ZMS=-146, GZ=-188, SZ=-250;
+let U=null, mol=null, comets=[], calib=null, sstG=null, rings=null, tubeG=null, tubeMats=[];
+const tmpV=GL?new THREE.Vector3():null;
+
+if(GL){
+ const pr=Math.min(devicePixelRatio||1,coarse?1.5:1.75);
+ renderer.setPixelRatio(pr);renderer.setSize(W,H,false);renderer.setClearColor(BG,1);
+ scene=new THREE.Scene();scene.fog=new THREE.FogExp2(BG,.013);
+ camera=new THREE.PerspectiveCamera(45,W/H,.1,600);camera.position.set(0,4,78);
+ scene.add(new THREE.AmbientLight(0x3a5468,.9));
+ const dl=new THREE.DirectionalLight(0xa8e4ff,1.1);dl.position.set(6,10,12);scene.add(dl);
+ const rim=new THREE.DirectionalLight(0x6a4dff,.6);rim.position.set(-8,-4,-10);scene.add(rim);
+
+ if(THREE.EffectComposer&&THREE.UnrealBloomPass&&THREE.RenderPass){
+  composer=new THREE.EffectComposer(renderer);composer.setPixelRatio&&composer.setPixelRatio(pr);composer.setSize(W,H);
+  composer.addPass(new THREE.RenderPass(scene,camera));
+  bloom=new THREE.UnrealBloomPass(new THREE.Vector2(W,H),.8,.5,.34);composer.addPass(bloom);
+ }
+
+ /* --- supercritical fluid particles --- */
+ const PN=coarse||narrow()?7000:15000;
+ const pg=new THREE.BufferGeometry(),pp=new Float32Array(PN*3),ps=new Float32Array(PN),pz=new Float32Array(PN);
+ for(let i=0;i<PN;i++){pp[i*3]=(Math.random()*2-1)*48;pp[i*3+1]=(Math.random()*2-1)*30;pp[i*3+2]=-345+Math.random()*415;ps[i]=Math.random();pz[i]=.5+Math.random()*1.5}
+ pg.setAttribute('position',new THREE.BufferAttribute(pp,3));pg.setAttribute('aSeed',new THREE.BufferAttribute(ps,1));pg.setAttribute('aSize',new THREE.BufferAttribute(pz,1));
+ U={uTime:{value:0},uDens:{value:.22},uAgit:{value:1},uPix:{value:pr},uOff:{value:0},uCol:{value:new THREE.Color('#9fb0c0')},uBright:{value:.55}};
+ const pm=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float aSeed;attribute float aSize;uniform float uTime,uDens,uAgit,uPix,uOff;varying float vA;
+  void main(){vec3 p=position;p.z=-345.0+mod(p.z+345.0-uOff,415.0);float s=aSeed*43.7;
+  p.x+=sin(uTime*(0.4+uAgit*1.6)+s)*uAgit*2.2;p.y+=cos(uTime*(0.5+uAgit*1.4)+s*1.3)*uAgit*2.2;p.z+=sin(uTime*(0.3+uAgit)+s*0.7)*uAgit*1.5;
+  vec4 mv=modelViewMatrix*vec4(p,1.0);gl_Position=projectionMatrix*mv;float d=-mv.z;
+  float vis=1.0-smoothstep(uDens-0.05,uDens,aSeed);
+  vA=vis*smoothstep(0.5,4.0,d)*(1.0-smoothstep(40.0,95.0,d));
+  gl_PointSize=max(1.0,aSize*uPix*26.0/max(d,0.5));}`,
+  fragmentShader:`uniform vec3 uCol;uniform float uBright;varying float vA;
+  void main(){float r=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,r);gl_FragColor=vec4(uCol*uBright,a*vA);}`});
+ scene.add(new THREE.Points(pg,pm));
+
+ /* --- molecule (illustrative cyclic undecapeptide) --- */
+ mol={group:new THREE.Group(),atoms:[],bonds:[],f:0};scene.add(mol.group);
+ const R=11,expN=new Set([1,4,8]),expO=new Set([6,10]);
+ const add=(type,ext,fold,exposed)=>mol.atoms.push({type,ext,fold,exposed:!!exposed,cur:new THREE.Vector3()});
+ for(let k=0;k<R;k++){
+  const th=k/R*Math.PI*2,pk=.8*Math.sin(2*th),sg=k%2?1:-1;
+  const F=(a,r,z)=>new THREE.Vector3(Math.cos(a)*r,Math.sin(a)*r,z);
+  const x0=(k-5)*2.3,wy=Math.sin(k*.8)*.9,wz=Math.cos(k*.6)*1.3;
+  const E=(x,y,z)=>new THREE.Vector3(x0+x,y+wy,z+wz);
+  add('N',E(-.75,.35,0),F(th-.2,3.4,pk),expN.has(k));
+  add('CA',E(0,-.35,.2),F(th,3.6,pk));
+  add('C',E(.75,.35,0),F(th+.2,3.4,pk));
+  const oe=expO.has(k);add('O',E(.8,1.55,.3*Math.sin(k)),F(th+.22,oe?4.6:2.2,pk+(oe?0:sg*.5)),oe);
+  add('S',E(0,-1.6,.4),F(th,4.8,pk+sg*.4));
+  add('S',E(.4,-2.7,-.5),F(th+.1,2.7,k%2?2.3:-2.3));
+  if(k===0)add('O',E(-.5,-3.5,.3),F(th-.05,3.0,1.5));else add('S',E(-.5,-3.5,.3),F(th-.12,5.8,pk-sg*.6));
+ }
+ for(let k=0;k<R;k++){const b=k*7;mol.bonds.push([b,b+1],[b+1,b+2],[b+2,b+3],[b+1,b+4],[b+4,b+5],[b+4,b+6]);if(k<R-1)mol.bonds.push([b+2,b+7])}
+ mol.closing=[(R-1)*7+2,0]; // 11 amide N + 11 carbonyl O + MeBmt OH = 23 polar atoms; 5 stay exposed when folded (≈62/278)
+ const sph=new THREE.SphereGeometry(1,24,16);
+ const idx=t=>mol.atoms.map((a,i)=>t.includes(a.type)?i:-1).filter(i=>i>=0);
+ mol.polI=idx(['N','O']);mol.bbI=idx(['CA','C']);mol.scI=idx(['S']);
+ mol.pol=new THREE.InstancedMesh(sph,new THREE.MeshBasicMaterial({color:0xffffff}),mol.polI.length);
+ mol.bb=new THREE.InstancedMesh(sph,new THREE.MeshStandardMaterial({color:0x6f8296,roughness:.55,metalness:.05}),mol.bbI.length);
+ mol.sc=new THREE.InstancedMesh(sph,new THREE.MeshStandardMaterial({color:0x3b4f63,roughness:.5,metalness:.15}),mol.scI.length);
+ const amber=new THREE.Color('#ffb24a');mol.polI.forEach((_,j)=>mol.pol.setColorAt(j,amber));
+ mol.group.add(mol.pol,mol.bb,mol.sc);
+ const bpos=new Float32Array((mol.bonds.length+1)*6);
+ mol.bg=new THREE.BufferGeometry();mol.bg.setAttribute('position',new THREE.BufferAttribute(bpos,3));
+ mol.group.add(new THREE.LineSegments(mol.bg,new THREE.LineBasicMaterial({color:0x6f8597,transparent:true,opacity:.75})));
+ mol.hb=[[0,6],[3,9],[5,0],[8,3]].map(([o,n])=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+  const m=new THREE.LineDashedMaterial({color:0x8fe6ff,dashSize:.22,gapSize:.16,transparent:true,opacity:0});const l=new THREE.Line(g,m);mol.group.add(l);return{l,g,m,a:o*7+3,b:n*7}});
+ // halo sprites for polar atoms
+ const hg=new THREE.BufferGeometry();hg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(mol.polI.length*3),3));hg.setAttribute('aBri',new THREE.BufferAttribute(new Float32Array(mol.polI.length),1));
+ mol.hg=hg;mol.halo=new THREE.Points(hg,new THREE.ShaderMaterial({uniforms:{uPix:{value:pr}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float aBri;uniform float uPix;varying float vB;void main(){vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;vB=aBri;gl_PointSize=uPix*aBri*170.0/max(-mv.z,1.0);}`,
+  fragmentShader:`varying float vB;void main(){float r=length(gl_PointCoord-0.5);float a=pow(smoothstep(0.5,0.0,r),2.2);gl_FragColor=vec4(vec3(1.0,0.55,0.16)*a*0.38*vB,1.0);}`}));
+ mol.group.add(mol.halo);
+ mol.light=new THREE.PointLight(0xffa040,2.5,14,2);mol.group.add(mol.light);
+ mol.dummy=new THREE.Object3D();
+
+ /* --- the column --- */
+ const tube=new THREE.Group();scene.add(tube);tubeG=tube;
+ const ringMat=new THREE.LineBasicMaterial({color:0x1d5a6b,transparent:true,opacity:.55});tubeMats.push([ringMat,.55]);
+ const circ=[];for(let a=0;a<=64;a++){const t=a/64*Math.PI*2;circ.push(new THREE.Vector3(Math.cos(t)*3.1,Math.sin(t)*3.1,0))}
+ const cg=new THREE.BufferGeometry().setFromPoints(circ);
+ for(let z=Z0;z>=ZPDA;z-=2.5){const r=new THREE.Line(cg,ringMat);r.position.z=z;tube.add(r)}
+ for(let a=0;a<8;a++){const t=a/8*Math.PI*2;tube.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(Math.cos(t)*3.1,Math.sin(t)*3.1,Z0),new THREE.Vector3(Math.cos(t)*3.1,Math.sin(t)*3.1,ZPDA)]),ringMat))}
+ const BN=coarse?900:1800,beads=new THREE.InstancedMesh(new THREE.SphereGeometry(1,10,8),new THREE.MeshStandardMaterial({color:0x10303a,emissive:0x041218,roughness:.7,transparent:true}),BN);tubeMats.push([beads.material,1]);
+ const dm=new THREE.Object3D();
+ for(let i=0;i<BN;i++){const t=Math.random()*Math.PI*2,r=3.05+Math.random()*.35;dm.position.set(Math.cos(t)*r,Math.sin(t)*r,Z0-Math.random()*L);const s=.04+Math.random()*.08;dm.scale.set(s,s,s);dm.updateMatrix();beads.setMatrixAt(i,dm.matrix)}
+ tube.add(beads);
+ const mkRing=(z,col,r)=>{const m=new THREE.Mesh(new THREE.TorusGeometry(r,.035,8,96),new THREE.MeshBasicMaterial({color:col,transparent:true}));tubeMats.push([m.material,1]);m.position.z=z;tube.add(m);
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(r,64),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.08,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));disc.position.z=z;tube.add(disc);return{m,disc,base:new THREE.Color(col),fl:0}};
+ rings={mouth:mkRing(Z0,0x1d5a6b,3.15),pda:mkRing(ZPDA,0x8fe6ff,3.15),ms:mkRing(ZMS,0xa98bff,2.4)};
+ tag('PDA · 254 nm','uv',()=>tmpV.set(3.5,3.3,ZPDA),()=>cur.i===4);
+ tag('MS · LCMS-2050','uv',()=>tmpV.set(2.8,-2.9,ZMS),()=>cur.i===4);
+ tag('Column inlet','axis',()=>tmpV.set(3.4,3.4,Z0),()=>cur.i===4&&tMin<1.2);
+
+ const ramp=[new THREE.Color('#8fe6ff'),new THREE.Color('#ffd27a'),new THREE.Color('#ff6a3d')];
+ const polCol=e=>{const t=clamp((e-47)/183);return t<.5?ramp[0].clone().lerp(ramp[1],t*2):ramp[1].clone().lerp(ramp[2],(t-.5)*2)};
+ const TR=26;
+ COMETS.forEach((c,i)=>{
+  const col=c.pda?(c.pep?new THREE.Color('#ffffff'):polCol(c.e)):new THREE.Color('#a98bff');
+  const a=i/COMETS.length*Math.PI*2+.3,r=c.pep?.6:1.75;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(c.pep?.42:.32,16,12),new THREE.MeshBasicMaterial({color:col.clone().multiplyScalar(c.pda?1.3:.55),transparent:true}));
+  const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TR*3),3));
+  const tc=new Float32Array(TR*3);for(let j=0;j<TR;j++){const f=Math.pow(1-j/TR,1.6)*(c.pda?1:.55);tc[j*3]=col.r*f;tc[j*3+1]=col.g*f;tc[j*3+2]=col.b*f}
+  tg.setAttribute('color',new THREE.BufferAttribute(tc,3));
+  const trail=new THREE.Line(tg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
+  scene.add(head,trail);
+  const o={...c,head,trail,tg,x:Math.cos(a)*r,y:Math.sin(a)*r,z:Z0};comets.push(o);
+  tag(`<span class="k">${c.k}</span>${c.n} · ${c.e} Å²${c.pda?'':' · MS only'}`,c.pda?'':'uv',()=>tmpV.set(o.x+.6,o.y+.5,o.z),()=>cur.i===4&&tMin>.12&&o.z<Z0-1.5&&o.z>ZMS-4&&camera.position.z-o.z>2&&camera.position.z-o.z<30);
+ });
+
+ /* --- calibration graph --- */
+ calib={g:new THREE.Group(),pts:[],pep:[]};calib.g.position.z=GZ;scene.add(calib.g);
+ const GX=rt=>-18+rt/4.2*36,GY=e=>-10+e/250*20;calib.GX=GX;calib.GY=GY;
+ const axM=new THREE.LineBasicMaterial({color:0x5c6f7c,transparent:true,opacity:.8}),grM=new THREE.LineBasicMaterial({color:0x22313b,transparent:true,opacity:.6});
+ const seg=(a,b,m)=>calib.g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),m));
+ seg(new THREE.Vector3(GX(0),GY(0),0),new THREE.Vector3(GX(4.2),GY(0),0),axM);seg(new THREE.Vector3(GX(0),GY(0),0),new THREE.Vector3(GX(0),GY(250),0),axM);
+ for(let e=50;e<=250;e+=50)seg(new THREE.Vector3(GX(0),GY(e),0),new THREE.Vector3(GX(4.2),GY(e),0),grM);
+ for(let t=0;t<=4;t++){const tv=new THREE.Vector3(GX(t),GY(0)-.9,0);tag(t+(t===4?' min':''),'axis',()=>tmpV.copy(tv).add(calib.g.position),()=>cur.i===5)}
+ for(let e=0;e<=250;e+=50){const tv=new THREE.Vector3(GX(0)-1.4,GY(e),0);tag(e+(e===250?' Å²':''),'axis',()=>tmpV.copy(tv).add(calib.g.position),()=>cur.i===5)}
+ STD.forEach(([k,n,e],i)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.42,20,14),new THREE.MeshBasicMaterial({color:polCol(e).multiplyScalar(1.25)}));
+  m.position.set(GX(rtOf(e)),GY(e),0);m.scale.setScalar(.001);calib.g.add(m);calib.pts.push(m);
+  tag(`<span class="k">${k}</span>${n}`,'',()=>tmpV.copy(m.position).add(calib.g.position).add(new THREE.Vector3(.7,.25,0)),()=>cur.i===5&&m.scale.x>.5)});
+ const line=(d,col,op)=>{const n=120,a=new Float32Array(n*3);for(let i=0;i<n;i++){const t=.25+i/(n-1)*3.75;a[i*3]=GX(t);a[i*3+1]=GY(epsaOf(t,d));a[i*3+2]=0}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));g.setDrawRange(0,0);const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:op}));calib.g.add(l);return{g,n}};
+ calib.lp=line('PDA',0x8fe6ff,1);calib.lm=line('MS',0xa98bff,.7);
+ [['Ritonavir',.932,75,'PDA'],['Cyclosporin A',rtOf(62,'MS'),62,'MS']].forEach(([n,t,e,d],j)=>{
+  const m=new THREE.Mesh(new THREE.TorusGeometry(.6,.07,8,40),new THREE.MeshBasicMaterial({color:d==='PDA'?0xffffff:0xa98bff}));m.position.set(GX(t),GY(e),0);m.scale.setScalar(.001);calib.g.add(m);calib.pep.push(m);
+  tag(`${n} · ${e} Å²`,d==='MS'?'uv':'',()=>tmpV.copy(m.position).add(calib.g.position).add(j===0?new THREE.Vector3(-2,6,0):new THREE.Vector3(-4,3.2,0)),()=>cur.i===5&&m.scale.x>.5)});
+ calib.probe=new THREE.Mesh(new THREE.SphereGeometry(.3,16,12),new THREE.MeshBasicMaterial({color:0xffffff}));calib.g.add(calib.probe);
+ const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(9),3));
+ calib.guide=new THREE.Line(gg,new THREE.LineDashedMaterial({color:0xe9eef2,dashSize:.3,gapSize:.25,transparent:true,opacity:.6}));
+ calib.g.add(calib.guide);
+
+ /* --- SST band --- */
+ sstG={g:new THREE.Group(),pts:[]};sstG.g.position.z=SZ;scene.add(sstG.g);
+ const SX=i=>-10.5+i*4.2,SY=rt=>(rt-2.15)*70;
+ const band=new THREE.Mesh(new THREE.PlaneGeometry(26,7),new THREE.MeshBasicMaterial({color:0x2c8fa8,transparent:true,opacity:.13,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));sstG.g.add(band);
+ const lim=new THREE.LineDashedMaterial({color:0x8fe6ff,dashSize:.5,gapSize:.35,transparent:true,opacity:.7});
+ [-3.5,3.5].forEach(y=>{const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-13,y,0),new THREE.Vector3(13,y,0)]),lim);l.computeLineDistances();sstG.g.add(l)});
+ tag('Pass window · 2.100–2.200 min','axis',()=>tmpV.set(-12.6,2.7,SZ),()=>cur.i===6);
+ const pl=SST.map(([d,t],i)=>new THREE.Vector3(SX(i),SY(t),0));
+ sstG.g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pl),new THREE.LineBasicMaterial({color:0x8a9aa7,transparent:true,opacity:.6})));
+ SST.forEach(([d,t],i)=>{const fail=t<2.1||t>2.2;const m=new THREE.Mesh(new THREE.SphereGeometry(fail?.55:.42,20,14),new THREE.MeshBasicMaterial({color:fail?0xff6a3d:0x8fe6ff}));
+  m.position.copy(pl[i]);sstG.g.add(m);sstG.pts.push({m,fail});
+  tag(`${d} · ${t.toFixed(3)}${fail?' · FAIL':''}`,fail?'fail':'axis',()=>tmpV.set(m.position.x-1.6,fail?m.position.y+1.3:-4.9,SZ),()=>cur.i===6)});
+}
+
+/* ---------- camera poses ---------- */
+const camLook=GL?new THREE.Vector3(0,0,0):null;
+function af(){return clamp(1.55/(W/H),1,2.3)}
+function sideOff(){return narrow()?0:1}
+function orbitPose(a,r,y,off){const pos=new THREE.Vector3(Math.sin(a)*r,y,Math.cos(a)*r);const right=new THREE.Vector3(Math.cos(a),0,-Math.sin(a));return[pos,right.multiplyScalar(off)]}
+function pose(i,lp,time){
+ const k=af(),e=ease(lp),so=sideOff();
+ switch(i){
+  case 0:return[new THREE.Vector3(0,lerp(4,2,e),lerp(80,56,e)),new THREE.Vector3(0,0,0)];
+  case 1:return[new THREE.Vector3(0,lerp(2,1,e),lerp(56,24*k,e)),new THREE.Vector3(0,0,0)];
+  case 2:return orbitPose(lerp(-.35,.25,lp),lerp(35,32,lp)*k,lerp(1,2.5,lp),-5.5*so);
+  case 3:{const fz=ease(sstep(.08,.85,lp));return orbitPose(lerp(.25,1.15,e),lerp(32,22,fz)*k,lerp(2.5,4,e),-lerp(5.5,6,fz)*so)}
+  case 4:{if(lp<.1){const q=ease(lp/.1),[p0,l0]=pose(3,1);return[p0.lerp(new THREE.Vector3(0,.4,-30),q),l0.lerp(new THREE.Vector3(0,0,-70),q)]}
+   const q=(lp-.1)/.9,z=-30-102*q;return[new THREE.Vector3(Math.sin(q*5)*.7,.3+Math.cos(q*4)*.4,z),new THREE.Vector3(0,0,z-28)]}
+  case 5:{const lx=narrow()?0:-7.5+lerp(-.8,.8,lp);return[new THREE.Vector3(lx+lerp(-3,3,lp),lerp(3,1,lp),GZ+(narrow()?30:40)*k),new THREE.Vector3(lx,narrow()?-4:1,GZ)]}
+  case 6:{const lx=-6.5*so;return[new THREE.Vector3(lx+lerp(-6,6,lp),4,SZ+(narrow()?34:32)*k),new THREE.Vector3(lx,narrow()?-20:0,SZ)]}
+  case 7:{const[p,l]=orbitPose(-.6+lp*1.1+time*.04,17*k,3,5*so);p.z+=ZE;l.z+=ZE;if(narrow())l.y+=4;return[p,l]}
+ }
+}
+
+/* ---------- loop ---------- */
+let sy=scrollY,last=performance.now(),cur={i:0,lp:0},tMin=0,phaseV={d:.22,a:1,b:.55},flowOff=0;
+const PH={gas:{d:.22,a:1,b:.55,c:'#9fb0c0',f:0},liquid:{d:1,a:.12,b:.5,c:'#4d86e0',f:.6},supercritical:{d:.88,a:.42,b:.9,c:'#bff1ff',f:7}};
+const names=secs.map(s=>s.dataset.name);
+function setRead(id,v){const el=$(id);if(el.textContent!==v)el.textContent=v}
+function frame(now){
+ const dt=Math.min(.05,(now-last)/1000);last=now;const time=now/1000;
+ const target=scrollY;sy+=reduce?(target-sy):(target-sy)*(1-Math.exp(-dt*9));
+ const real=stateAt(target);cur=stateAt(sy);const{i,lp}=cur;
+
+ // text beats
+ beats.forEach((bs,si)=>{const st=si===real.i?real.lp:(si<real.i?1.2:-.2);
+  bs.forEach(b=>{const o=sstep(b.a,b.a+.05,st)*(1-sstep(b.b-.05,b.b,st));b.el.style.opacity=o.toFixed(3);b.el.style.visibility=o<.01?'hidden':'visible'})});
+ $('hIdx').textContent=String(real.i+1).padStart(2,'0');setRead('hName',names[real.i]);
+ const docH=document.documentElement.scrollHeight-vh;$('railI').style.height=(clamp(target/Math.max(1,docH))*100)+'%';
+
+ // pressure / phase
+ let Pm,Tc,ph;const pe0=i===0?0:i===1?clamp(lp*1.08):1;
+ [Pm,Tc]=pressAt(pe0);if(i>1){Pm=20.4;Tc=40}
+ ph=phaseOf(Pm,Tc);
+ setRead('rP',Pm.toFixed(1));setRead('rT',Tc.toFixed(1));setRead('rPh',ph);setRead('phState',ph);
+ $('phDot').setAttribute('cx',pxT(Tc));$('phDot').setAttribute('cy',pyP(Pm));
+ {const pts=[];for(let s=0;s<=60;s++){const[pp,tt]=pressAt(pe0*s/60);pts.push(pxT(tt)+','+pyP(pp))}$('phPath').setAttribute('points',pts.join(' '))}
+
+ // fold
+ let fold=i<3?0:i===3?ease(sstep(.08,.85,lp)):1;
+ const demoHold=demo&&i===3&&lp>.86&&lp<.95;
+ hold+=((((holding||demoHold)&&i>=2)?1:0)-hold)*(1-Math.exp(-dt*7));
+ const visFold=fold*(1-hold*.0);
+ const fn=Math.round(278-216*fold*(1-hold));setRead('foldN',String(fn));setRead('foldLbl',hold>.5?'counted by TPSA':fold>.98?'exposed (EPSA)':'counted');
+
+ // column time
+ tMin=i<4?0:i===4?clamp((lp-.02)/.98)*4.2:4.2;
+ $('rTwrap').hidden=i!==4;if(i===4)setRead('rTr',tMin.toFixed(3));
+ drawChrom(tMin,i===4?sstep(.04,.12,lp)*(1-sstep(.97,1,lp)):0);
+
+ // cursor
+ if(!coarse){cx+=(mx-cx)*(reduce?1:.2);cy+=(my-cy)*(reduce?1:.2);$('cur').style.transform=`translate(${cx}px,${cy}px)`;
+  $('cur').classList.toggle('lbl',(i===3||i===7)&&!holding)}
+
+ // guided demo
+ tickDemo(Math.min(.25,(now-(frame._p||now))/1000));frame._p=now;
+
+ if(GL){
+  // particles
+  const tp=PH[ph];const kk=1-Math.exp(-dt*2.2);
+  phaseV.d=lerp(phaseV.d,tp.d,kk);phaseV.a=lerp(phaseV.a,tp.a,kk);phaseV.b=lerp(phaseV.b,tp.b,kk);
+  U.uDens.value=phaseV.d;U.uAgit.value=phaseV.a;U.uBright.value=phaseV.b*(i===5||i===6?.6:1);U.uCol.value.lerp(new THREE.Color(tp.c),kk);
+  flowOff+=dt*tp.f*(i===4?2.2:1);U.uOff.value=flowOff;U.uTime.value=time;
+
+  // molecule
+  const m=mol,f=fold;m.f=f;
+  const show=i===0?0:i===1?sstep(.55,1,lp):1;
+  m.group.scale.setScalar(Math.max(.001,show));m.group.position.z=i===7?ZE:0; // the molecule waits at the end of the journey instead of making the camera rewind
+  dragV*=Math.pow(.04,dt);dragYaw+=dragV;
+  m.group.rotation.y=time*.12+dragYaw;m.group.rotation.x=Math.sin(time*.21)*.15+((my/H)-.5)*.25;
+  const glowFold=f*(1-hold);
+  m.atoms.forEach((a,j)=>{a.cur.copy(a.ext).lerp(a.fold,f);const br=Math.sin(time*1.3+j*.7)*.06;a.cur.x+=br;a.cur.y+=br*.7});
+  const dmy=m.dummy;
+  const setI=(mesh,list,rad)=>{list.forEach((ai,j)=>{const a=m.atoms[ai];dmy.position.copy(a.cur);dmy.scale.setScalar(rad(a));dmy.updateMatrix();mesh.setMatrixAt(j,dmy.matrix)});mesh.instanceMatrix.needsUpdate=true};
+  setI(m.bb,m.bbI,()=>.34);setI(m.sc,m.scI,()=>.52);setI(m.pol,m.polI,a=>a.type==='O'?.4:.38);
+  const hp=m.hg.attributes.position.array,hb=m.hg.attributes.aBri.array,c=new THREE.Color();
+  m.polI.forEach((ai,j)=>{const a=m.atoms[ai];const bri=a.exposed?1:lerp(1,.1,glowFold);c.setRGB(1*bri*.98+.05,.62*bri*.98+.06,.22*bri*.98+.08);m.pol.setColorAt(j,c);
+   hp[j*3]=a.cur.x;hp[j*3+1]=a.cur.y;hp[j*3+2]=a.cur.z;hb[j]=bri*(a.exposed&&f>.9?1.25:1)});
+  m.pol.instanceColor.needsUpdate=true;m.hg.attributes.position.needsUpdate=true;m.hg.attributes.aBri.needsUpdate=true;
+  const bp=m.bg.attributes.position.array;let o=0;
+  m.bonds.forEach(([a,b])=>{const A=m.atoms[a].cur,B=m.atoms[b].cur;bp[o++]=A.x;bp[o++]=A.y;bp[o++]=A.z;bp[o++]=B.x;bp[o++]=B.y;bp[o++]=B.z});
+  {const A=m.atoms[m.closing[0]].cur,B0=m.atoms[m.closing[1]].cur;const B=A.clone().lerp(B0,f);bp[o++]=A.x;bp[o++]=A.y;bp[o++]=A.z;bp[o++]=B.x;bp[o++]=B.y;bp[o++]=B.z}
+  m.bg.attributes.position.needsUpdate=true;
+  m.hb.forEach(h=>{const A=m.atoms[h.a].cur,B=m.atoms[h.b].cur,p=h.g.attributes.position.array;p[0]=A.x;p[1]=A.y;p[2]=A.z;p[3]=B.x;p[4]=B.y;p[5]=B.z;h.g.attributes.position.needsUpdate=true;h.l.computeLineDistances();h.m.opacity=sstep(.6,.95,f)*.85*(1-hold*.7)});
+  m.light.intensity=lerp(3,.7,glowFold);
+
+  // comets
+  let flP=0,flM=0;
+  comets.forEach(cm=>{const zt=tt=>Z0-L*(tt/cm.rt);cm.z=zt(tMin);
+   const a=cm.trail.geometry.attributes.position.array;
+   for(let j=0;j<26;j++){const tj=Math.max(0,tMin-j*.035);a[j*3]=cm.x;a[j*3+1]=cm.y;a[j*3+2]=zt(tj)}
+   cm.trail.geometry.attributes.position.needsUpdate=true;
+   const alive=i===4&&tMin>0&&cm.z>ZMS-8;cm.head.visible=cm.trail.visible=alive;cm.head.position.set(cm.x,cm.y,cm.z);
+   const op=sstep(ZMS-8,ZMS-2,cm.z)*sstep(0,.06,tMin);cm.head.material.opacity=op;cm.trail.material.opacity=op;
+   if(i===4){if(cm.pda&&Math.abs(cm.z-ZPDA)<1.6)flP=1;if(Math.abs(cm.z-ZMS)<1.6)flM=1}});
+  const tubeFade=i===3?sstep(.75,1,lp):i===4?1:i===5?1-sstep(0,.2,lp):0;tubeG.visible=tubeFade>.01;tubeMats.forEach(([m,b])=>m.opacity=b*tubeFade);
+  rings.pda.fl=Math.max(flP,rings.pda.fl*Math.pow(.02,dt));rings.ms.fl=Math.max(flM,rings.ms.fl*Math.pow(.02,dt));
+  [rings.pda,rings.ms].forEach(r=>{r.m.material.color.copy(r.base).multiplyScalar(1+r.fl*2.2);r.disc.material.opacity=(.06+r.fl*.3)*tubeFade});
+  rings.mouth.disc.material.opacity=.08*tubeFade;
+
+  // calibration
+  if(i>=4){const cl=i===5?lp:(i>5?1:0);
+   calib.pts.forEach((p,j)=>p.scale.setScalar(Math.max(.001,sstep(.04+j*.045,.1+j*.045,cl))));
+   calib.lp.g.setDrawRange(0,Math.floor(sstep(.48,.66,cl)*calib.lp.n));calib.lm.g.setDrawRange(0,Math.floor(sstep(.52,.7,cl)*calib.lm.n));
+   calib.pep.forEach((p,j)=>{p.scale.setScalar(Math.max(.001,sstep(.68+j*.05,.76+j*.05,cl)));p.rotation.y=time*.8;p.rotation.x=time*.5});
+   let prt=demo?.35+3.6*(.5-.5*Math.cos(clamp((lp-.35)/.6)*Math.PI*2)):ptrMoved?lerp(.3,4.0,clamp(mx/W)):.932;
+   const pe=epsaOf(prt);calib.probe.position.set(calib.GX(prt),calib.GY(pe),0);calib.probe.visible=cl>.4;calib.guide.visible=cl>.4;
+   const ga=calib.guide.geometry.attributes.position.array;ga.set([calib.GX(prt),calib.GY(0),0,calib.GX(prt),calib.GY(pe),0,calib.GX(0),calib.GY(pe),0]);calib.guide.geometry.attributes.position.needsUpdate=true;calib.guide.computeLineDistances();
+   if(i===5){setRead('pE',pe.toFixed(1));setRead('pT',prt.toFixed(3))}}
+
+  // sst pulse
+  sstG.g.visible=i>=6;calib.g.visible=i===4||i===5;
+  sstG.pts.forEach(p=>{if(p.fail)p.m.scale.setScalar(1+Math.sin(time*4)*.18)});
+
+  // camera
+  const[tp2,tl]=pose(i,lp,time);
+  const ck=reduce?1:1-Math.exp(-dt*(i===7?2.2:4.5));
+  camera.position.lerp(tp2,ck);camLook.lerp(tl,ck);
+  camera.position.x+=((mx/W)-.5)*.0;camera.lookAt(camLook.x+((mx/W)-.5)*1.2,camLook.y-((my/H)-.5)*.8,camLook.z);
+  scene.fog.density=i>=5?.009:.013;
+  if(bloom)bloom.strength=i===4?.95:i===3?.85:.8;
+
+  // tags
+  for(const t of tags){const want=t.show()?1:0;t.o+=(want-t.o)*(1-Math.exp(-dt*10));
+   if(t.o<.01){if(t.el.style.opacity!=='0')t.el.style.opacity='0';continue}
+   const v=t.pos().clone().project(camera);if(v.z>1||v.z<-1){t.el.style.opacity='0';continue}
+   const x=(v.x*.5+.5)*W,y=(-v.y*.5+.5)*H;t.el.style.transform=`translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`;t.el.style.opacity=t.o.toFixed(3)}
+
+  composer?composer.render():renderer.render(scene,camera);
+ }
+ requestAnimationFrame(frame);
+}
+
+function resize(){measure();sizeChrom();if(GL){renderer.setSize(W,H,false);camera.aspect=W/H;camera.updateProjectionMatrix();if(composer)composer.setSize(W,H)}}
+addEventListener('resize',resize);
+document.fonts&&document.fonts.ready.then(measure);
+measure();requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
