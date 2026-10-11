@@ -149,11 +149,11 @@ window.PORTFOLIO = {
       id: "about",
       title: "About me.txt",
       text:
-`Hi, I'm kogason2010.
+`Hi there,
 
 I build interactive websites that make analytical science easier
 to see: chromatography explained with real-time 3D, scroll-driven
-stories and published method data.
+stories and published app notes.
 
 What's on this desktop
   Showcase           every project, with screenshots
