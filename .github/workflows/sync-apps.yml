@@ -1,0 +1,43 @@
+# Keeps the bundled apps in apps/ in step with their GitHub repos.
+# Runs every Monday, whenever js/config.js changes, and on demand from the Actions tab.
+name: Sync bundled apps
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"
+  push:
+    branches: [main]
+    paths: ["js/config.js", "tools/sync-apps.mjs"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-apps
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Copy built sites into apps/
+        run: node tools/sync-apps.mjs
+
+      - name: Commit changes
+        run: |
+          if [ -n "$(git status --porcelain apps)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+            git add apps
+            git commit -m "Sync bundled apps"
+            git push
+          else
+            echo "Bundled apps are already up to date."
+          fi
